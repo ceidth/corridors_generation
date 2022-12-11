@@ -1,6 +1,9 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class MazeRenderer3D : MonoBehaviour
 {
@@ -29,6 +32,18 @@ public class MazeRenderer3D : MonoBehaviour
     [SerializeField]
     private Transform anchor = null;
 
+    /*---UI---*/
+    [SerializeField] private Slider wSlider = null;
+    [SerializeField] private GameObject wText;
+
+    [SerializeField] private Slider hSlider = null;
+    [SerializeField] private GameObject hText;
+
+    [SerializeField] private Slider dSlider = null;
+    [SerializeField] private GameObject dText;
+
+    [SerializeField] private GameObject input;
+
 
     private float move = 0.2f;
     private WallState[,,] maze;
@@ -38,15 +53,40 @@ public class MazeRenderer3D : MonoBehaviour
     void Start()
     {
         level = height;
-        maze = MazeGenerator3D.Generate(width, height, depth, 0);
+        maze = MazeGenerator3D.Generate(width, height, depth, 0, 0);
         Draw(maze);
+    }
+
+    private void FixedUpdate()
+    {
+        wText.GetComponent<TextMeshProUGUI>().text = wSlider.value.ToString();
+        hText.GetComponent<TextMeshProUGUI>().text = hSlider.value.ToString();
+        dText.GetComponent<TextMeshProUGUI>().text = dSlider.value.ToString();
+
+        width = (int)wSlider.value;
+        height = (int)hSlider.value;
+        depth = (int)dSlider.value;
+
+
     }
 
     public void reGenerate(int choice)
     {
+        int seed;
 
+        if(!string.IsNullOrEmpty(input.GetComponent<TMP_InputField>().text))
+        {
+            seed = Convert.ToInt32(input.GetComponent<TMP_InputField>().text);
+        }
+        else
+        {
+            var rng = new System.Random();
+            seed = rng.Next();
+
+        }
+        Debug.Log("seed " + seed);
         reset();
-        maze = MazeGenerator3D.Generate(width, height, depth, choice);
+        maze = MazeGenerator3D.Generate(width, height, depth, choice, seed);
         Draw(maze);
     }
     
@@ -225,7 +265,8 @@ public class MazeRenderer3D : MonoBehaviour
 
                         if(j == 0)
                         {
-                            anchor.position = position + new Vector3(0, height / 2.0f, 0);
+                            anchor.position = position;
+                            Debug.Log("Position " + position.x + ", " + position.y + ", " + position.z);
                         }
 
 

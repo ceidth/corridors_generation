@@ -26,6 +26,13 @@ public class MazeRenderer : MonoBehaviour
         
     }
 
+    public void Generate()
+    {
+        reset();
+        var maze = MazeGenerator.Generate(width, height);
+        Draw(maze);
+    }
+
     private void Draw(WallStateOld[,] maze)
     {
         for (int i = 0; i < width; ++i)
@@ -73,10 +80,13 @@ public class MazeRenderer : MonoBehaviour
             }
         }
     }
-
-    // Update is called once per frame
-    void Update()
+    private void reset()
     {
-        
+        var clones = GameObject.FindGameObjectsWithTag("wall");
+        foreach (var clone in clones)
+        {
+            Destroy(clone);
+        }
+
     }
 }
