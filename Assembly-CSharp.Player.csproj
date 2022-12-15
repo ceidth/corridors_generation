@@ -61,6 +61,7 @@
     <Compile Include="Assets\Scripts\CameraScript.cs" />
     <Compile Include="Assets\Scripts\2D\MazeRenderer.cs" />
     <Compile Include="Assets\Scripts\MazeGenerator3D.cs" />
+    <Compile Include="Assets\Scripts\MazeSolver.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\TextMesh Pro\Shaders\TMPro.cginc" />

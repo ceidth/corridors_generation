@@ -15,6 +15,8 @@ public enum WallState
 
     FRONTIER = 64,
     VISITED = 128,
+
+    SOLUTION = 256
 }
 
 public struct Position
@@ -91,23 +93,25 @@ public static class MazeGenerator3D
 
         //zdjemowana gorna sciana z pola, ustawiana flaga visited
         maze[position.X, position.Y, position.Z] |= WallState.VISITED;
-        maze[position.X, position.Y, position.Z] &= ~WallState.ABOVE;
+
+        maze[position.X, position.Y, position.Z] &= ~WallState.BELOW;
+        maze[position.X, position.Y - 1, position.Z] &= ~WallState.ABOVE;
+
+        maze[position.X, position.Y - 1, position.Z] |= WallState.VISITED;
+
+        position = new Position { X = position.X, Y = position.Y - 1, Z = position.Z };
         visited.Add(position);
-        Debug.Log("Start: " + position.X + ", " + position.Y + ", " + position.Z);
+        //Debug.Log("Start: " + position.X + ", " + position.Y + ", " + position.Z);
 
         frontier.AddRange(GetUnvisitedNeighbours(position, maze, width, height, depth));
 
         while (frontier.Count > 0)
         {
-            for (int i = 0; i < frontier.Count; i++)
-            {
-                Debug.Log("Frontier " + i + ": " + frontier[i].Position.X + ", " + frontier[i].Position.Y + ", " + frontier[i].Position.Z);
-            }
-
+            
             var randIndex = rng.Next(0, frontier.Count);
             var randFront = frontier[randIndex].Position;
 
-            Debug.Log("Chosen frontier: " + randFront.X + ", " + randFront.Y + ", " + randFront.Z);
+            //Debug.Log("Chosen frontier: " + randFront.X + ", " + randFront.Y + ", " + randFront.Z);
             frontier.RemoveAt(randIndex);
 
             var visitedNeighbours = GetVisitedNeighbours(randFront, maze, width, height, depth);
@@ -117,7 +121,7 @@ public static class MazeGenerator3D
 
             if (nPosition.Y > randFront.Y)
             {
-                Debug.Log("Clearing bc - visited Y: " + nPosition.Y + ", frontier Y: " + randFront.Y);
+                //Debug.Log("Clearing bc - visited Y: " + nPosition.Y + ", frontier Y: " + randFront.Y);
                 frontier.Clear();
             }
 
@@ -254,13 +258,17 @@ public static class MazeGenerator3D
         var position = new Position { X = rng.Next(0, width), Y = height - 1, Z = rng.Next(0, depth) };
 
         maze[position.X, position.Y, position.Z] |= WallState.VISITED;
-        var remaining = width * height * depth - 1;
-        Debug.Log("przed " + height);
-        int nHeight = height;
+        maze[position.X, position.Y, position.Z] &= ~WallState.BELOW;
+        maze[position.X, position.Y - 1, position.Z] &= ~WallState.ABOVE;
+        maze[position.X, position.Y - 1, position.Z] |= WallState.VISITED;
+
+        var remaining = width * (height - 1) * depth - 1;
+        //Debug.Log("przed " + (height - 1));
+        int nHeight = height - 1;
         while(remaining > 0)
         {
             remaining = remaining - Walk(maze, width, nHeight, depth, seed);
-            Debug.Log("po " + height);
+            //Debug.Log("po " + height);
         }
         
         return maze;
@@ -273,6 +281,10 @@ public static class MazeGenerator3D
         var position = new Position { X = rng.Next(0, width), Y = height - 1, Z = rng.Next(0, depth) };
 
         maze[position.X, position.Y, position.Z] |= WallState.VISITED;
+        maze[position.X, position.Y, position.Z] &= ~WallState.BELOW;
+        maze[position.X, position.Y - 1, position.Z] &= ~WallState.ABOVE;
+        maze[position.X, position.Y - 1, position.Z] |= WallState.VISITED;
+        position = new Position { X = position.X, Y = position.Y - 1, Z = position.Z };
         positionStack.Push(position);
 
         while(positionStack.Count > 0)
@@ -293,6 +305,11 @@ public static class MazeGenerator3D
                 maze[nPosition.X, nPosition.Y, nPosition.Z] |= WallState.VISITED;
 
                 positionStack.Push(nPosition);
+
+                if (nPosition.Y == 0)
+                {
+                    positionStack.Clear();
+                }
             }
         }
 
@@ -305,14 +322,19 @@ public static class MazeGenerator3D
         var position = new Position { X = rng.Next(0, width), Y = height - 1, Z = rng.Next(0, depth) };
 
         maze[position.X, position.Y, position.Z] |= WallState.VISITED;
+        maze[position.X, position.Y, position.Z] &= ~WallState.BELOW;
+        maze[position.X, position.Y - 1, position.Z] &= ~WallState.ABOVE;
+        maze[position.X, position.Y - 1, position.Z] |= WallState.VISITED;
+        position = new Position { X = position.X, Y = position.Y - 1, Z = position.Z };
 
-        while(position.X > -1)
+        while (position.X > -1)
         {
             WalkHAK(maze, position, width, height, depth);
             position = HuntHAK(maze, width, height, depth);
 
             if(position.Y == 0)
             {
+                maze[position.X, position.Y, position.Z] |= WallState.VISITED;
                 break;
             }
         }
@@ -682,7 +704,7 @@ public static class MazeGenerator3D
 
         for (int i = 0; i < width; i++)
         {
-            for(int j = 0; j < height; j++)
+            for(int j = 1; j < height; j++)
             {
                 for(int k = 0; k < depth; k++)
                 {
@@ -714,7 +736,7 @@ public static class MazeGenerator3D
         Debug.Log(randCell.Y);
         startCell = randCell;
 
-        while(walking)
+        while (walking)
         {
             walking = false;
             var neigh = GetValidNeighbour(randCell, visits, width, lowestY[0] + 1, depth, seed);
@@ -728,9 +750,14 @@ public static class MazeGenerator3D
 
         steps = VisitPath(startCell, visits, maze);
 
-        if(startCell.Y == 0)
+        if (startCell.Y == 1)
         {
             steps = width * height * depth;
+
+            maze[startCell.X, startCell.Y, startCell.Z] &= ~WallState.BELOW;
+            maze[startCell.X, startCell.Y - 1, startCell.Z] &= ~WallState.ABOVE;
+
+            maze[startCell.X, startCell.Y - 1, startCell.Z] |= WallState.VISITED;
         }
 
         return steps;

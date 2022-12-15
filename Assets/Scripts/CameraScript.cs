@@ -23,6 +23,8 @@ public class CameraScript : MonoBehaviour
         if (Input.GetMouseButtonDown(0)) //jedno klikniecie
         {
             previousPosition = cam.ScreenToViewportPoint(Input.mousePosition);
+            //cam.transform.position = 
+            //previousPosition = new Vector3(target.position.x, target.position.y, target.position.z - 10.0f);
         }
         else if (Input.GetMouseButton(0)) //przytrzymany przycisk
         {
@@ -42,6 +44,7 @@ public class CameraScript : MonoBehaviour
             cam.transform.RotateAround(target.position, new Vector3(0, 1, 0), -direction.x * 180);
 
             previousPosition = newPosition;
+
         }
 
         Vector3 pos = cam.transform.position;
