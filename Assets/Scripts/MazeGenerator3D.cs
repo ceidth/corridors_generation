@@ -68,6 +68,11 @@ public class Tree
 
 public static class MazeGenerator3D
 {
+    public static int startX;
+    public static int startZ;
+
+    public static int finishX = 0;
+    public static int finishZ = 0;
 
     public static WallState GetOppositeWall(WallState wall)
     {
@@ -89,7 +94,7 @@ public static class MazeGenerator3D
         var rng = new System.Random(seed);
         var visited = new List<Position>();
         var frontier = new List<Neighbour>();
-        var position = new Position { X = rng.Next(0, width), Y = height - 1, Z = rng.Next(0, depth) };
+        var position = new Position { X = startX, Y = height - 1, Z = startZ };
 
         //zdjemowana gorna sciana z pola, ustawiana flaga visited
         maze[position.X, position.Y, position.Z] |= WallState.VISITED;
@@ -166,7 +171,7 @@ public static class MazeGenerator3D
         //Debug.Log("Initial: " + edges.Count);
 
         //losowy poczatek //tu usunac h-1
-        var start = new Position { X = rng.Next(0, width), Y = height - 1, Z = rng.Next(0, depth) };
+        var start = new Position { X = startX, Y = height - 1, Z = startZ };
         /*edges.RemoveAll(e => e.Position.X != start.X && e.Position.Z != start.Z && e.Position.Y == height - 1);
         Debug.Log("Start: " + edges.Count);*/
         sets[start.X, start.Y, start.Z].connect(sets[start.X, start.Y - 1, start.Z]);
@@ -178,7 +183,7 @@ public static class MazeGenerator3D
         edges.RemoveAll(e => e.Position.Y == start.Y);
 
         //losowy koniec //tu usunac 0
-        var finish = new Position { X = rng.Next(0, width), Y = 1, Z = rng.Next(0, depth) };
+        var finish = new Position { X = finishX, Y = 1, Z = finishZ };
         /*edges.RemoveAll(e => e.Position.X != finish.X && e.Position.Z != finish.Z && e.Position.Y == 1 && e.Wall == WallState.BELOW);
         Debug.Log("Finish: " + edges.Count);*/
         sets[finish.X, finish.Y, finish.Z].connect(sets[finish.X, finish.Y - 1, finish.Z]);
@@ -255,7 +260,7 @@ public static class MazeGenerator3D
     private static WallState[,,] Wilsons(WallState[,,] maze, int width, int height, int depth, int seed)
     {
         var rng = new System.Random(seed);
-        var position = new Position { X = rng.Next(0, width), Y = height - 1, Z = rng.Next(0, depth) };
+        var position = new Position { X = startX, Y = height - 1, Z = startZ };
 
         maze[position.X, position.Y, position.Z] |= WallState.VISITED;
         maze[position.X, position.Y, position.Z] &= ~WallState.BELOW;
@@ -278,7 +283,7 @@ public static class MazeGenerator3D
     {
         var rng = new System.Random(seed);
         var positionStack = new Stack<Position>();
-        var position = new Position { X = rng.Next(0, width), Y = height - 1, Z = rng.Next(0, depth) };
+        var position = new Position { X = startX, Y = height - 1, Z = startZ };
 
         maze[position.X, position.Y, position.Z] |= WallState.VISITED;
         maze[position.X, position.Y, position.Z] &= ~WallState.BELOW;
@@ -319,7 +324,7 @@ public static class MazeGenerator3D
     private static WallState[,,] HuntAndKill(WallState[,,] maze, int width, int height, int depth)
     {
         var rng = new System.Random(/*seed*/);
-        var position = new Position { X = rng.Next(0, width), Y = height - 1, Z = rng.Next(0, depth) };
+        var position = new Position { X = startX, Y = height - 1, Z = startZ };
 
         maze[position.X, position.Y, position.Z] |= WallState.VISITED;
         maze[position.X, position.Y, position.Z] &= ~WallState.BELOW;

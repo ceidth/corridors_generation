@@ -6,16 +6,18 @@ using static UnityEditor.PlayerSettings;
 public class CameraScript : MonoBehaviour
 {
     [SerializeField] public Camera cam;
-    [SerializeField] public Transform target;
+    [SerializeField] private GameObject target;
     [SerializeField] public float distance = 10.0f;
 
     private Vector3 previousPosition;
+    private Vector3 oldTarget = Vector3.zero;
 
     void Start()
     {
         //cam.transform.LookAt(target);
         //cam.transform.position = new Vector3(target.position.x, target.position.y, target.position.z - 10.0f);
         /*previousPosition = cam.transform.position;*/
+
     }
 
     void FixedUpdate ()
@@ -41,7 +43,8 @@ public class CameraScript : MonoBehaviour
 
             cam.transform.Translate(new Vector3(0, 0, -distance));*/
 
-            cam.transform.RotateAround(target.position, new Vector3(0, 1, 0), -direction.x * 180);
+            cam.transform.RotateAround(target.transform.position, new Vector3(0, 1, 0), -direction.x * 180);
+            Debug.Log(target.transform.position);
 
             previousPosition = newPosition;
 
@@ -53,6 +56,13 @@ public class CameraScript : MonoBehaviour
 
         //cam.transform.LookAt(target);
         /*cam.transform.position = new Vector3(distance + target.position.x, target.position.y, target.position.z);*/
+
+        if(oldTarget != target.transform.position)
+        {
+            cam.transform.position = new Vector3(target.transform.position.x, 0, target.transform.position.z - 20);
+            cam.transform.LookAt(target.transform);
+            oldTarget = target.transform.position;
+        }
 
     }
 }

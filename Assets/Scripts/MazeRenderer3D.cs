@@ -42,8 +42,8 @@ public class MazeRenderer3D : MonoBehaviour
     [SerializeField] private Slider dSlider = null;
     [SerializeField] private GameObject dText;
 
-    [SerializeField] private GameObject input;
-
+    /*---VARIABLES---*/
+    [SerializeField] private GameObject uiController;
 
     private float move = 0.2f;
     private WallState[,,] maze;
@@ -67,23 +67,17 @@ public class MazeRenderer3D : MonoBehaviour
         height = (int)hSlider.value;
         depth = (int)dSlider.value;
 
+
     }
 
     public void reGenerate(int choice)
     {
-        int seed;
+        var rng = new System.Random();
+        int seed = rng.Next();
 
-        if(!string.IsNullOrEmpty(input.GetComponent<TMP_InputField>().text))
-        {
-            seed = Convert.ToInt32(input.GetComponent<TMP_InputField>().text);
-        }
-        else
-        {
-            var rng = new System.Random();
-            seed = rng.Next();
+        //MazeGenerator3D.startZ = 0;
+        //MazeGenerator3D.startX = 0;
 
-        }
-        Debug.Log("seed " + seed);
         reset();
         maze = MazeGenerator3D.Generate(width, height, depth, choice, seed);
         MazeSolver.Solve(maze, width, height, depth);
@@ -104,6 +98,8 @@ public class MazeRenderer3D : MonoBehaviour
 
     private void Draw(WallState[,,] maze)
     {
+        var anchPos = new Vector3(0, 0, 0);
+
         for (int i = 0; i < width; ++i)
         {
             for (int j = 0; j < height; ++j)
@@ -120,6 +116,7 @@ public class MazeRenderer3D : MonoBehaviour
                         if(j == 0 || j == height - 1)
                         {
                             pathPrefab.GetComponent<Renderer>().material = startMaterial;
+                            anchPos += position;
                         }
                         else if(cell.HasFlag(WallState.SOLUTION))
                         {
@@ -133,11 +130,11 @@ public class MazeRenderer3D : MonoBehaviour
                         var path = Instantiate(pathPrefab, transform) as Transform;
                         path.position = position;
 
-                        if(j == 0)
+                        /*if(j == 0)
                         {
                             anchor.position = position;
                             //Debug.Log("Position " + position.x + ", " + position.y + ", " + position.z);
-                        }
+                        }*/
 
 
                         if (!cell.HasFlag(WallState.LEFT))
@@ -189,6 +186,8 @@ public class MazeRenderer3D : MonoBehaviour
                 }
             }
         }
+
+        anchor.position = anchPos / 2;
     }
 
     // Update is called once per frame
