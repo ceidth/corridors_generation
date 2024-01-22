@@ -6,6 +6,9 @@ TagManager:
   tags:
   - wall
   - Gap
+  - StartElement
+  - FinishElement
+  - UnifyBtn
   layers:
   - Default
   - TransparentFX

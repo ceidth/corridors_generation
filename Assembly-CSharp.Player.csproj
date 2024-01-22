@@ -59,6 +59,7 @@
     <Compile Include="Assets\Scripts\MazeSolver.cs" />
     <Compile Include="Assets\Scripts\MazeRenderer3D.cs" />
     <Compile Include="Assets\Scripts\2D\MazeGenerator.cs" />
+    <Compile Include="Assets\Scripts\StandardShaderUtils.cs" />
     <Compile Include="Assets\Scripts\UIController.cs" />
     <Compile Include="Assets\Scripts\CameraScript.cs" />
     <Compile Include="Assets\Scripts\2D\MazeRenderer.cs" />

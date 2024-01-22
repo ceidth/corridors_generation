@@ -2,8 +2,10 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using TMPro;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.UIElements.Experimental;
 
 public class MazeRenderer3D : MonoBehaviour
 {
@@ -13,7 +15,7 @@ public class MazeRenderer3D : MonoBehaviour
     private int width = 5;
 
     [SerializeField]
-    [Range(1, 30)]
+    [Range(3, 30)]
     private int height = 5;
 
     [SerializeField]
@@ -31,6 +33,7 @@ public class MazeRenderer3D : MonoBehaviour
     [SerializeField] private Material pathMaterial = null;
     [SerializeField] private Material startMaterial = null;
     [SerializeField] private Material solutionMaterial = null;
+    [SerializeField] private Material roomMaterial = null;
 
     /*---UI---*/
     [SerializeField] private Slider wSlider = null;
@@ -45,17 +48,13 @@ public class MazeRenderer3D : MonoBehaviour
     /*---VARIABLES---*/
     [SerializeField] private GameObject uiController;
 
-    private float move = 0.2f;
+    private float move = 0.15f;
     private WallState[,,] maze;
-    private int level;
 
-    // Start is called before the first frame update
-    void Start()
-    {
-        level = height;
-        maze = MazeGenerator3D.Generate(width, height, depth, 0, 0);
-        Draw(maze);
-    }
+    /*---COMBINING MESHES---*/
+    private List<GameObject> gameObjectsToCombine = new();
+    public GameObject[] meshColorObjects;
+    private int c = 0;
 
     private void FixedUpdate()
     {
@@ -67,37 +66,67 @@ public class MazeRenderer3D : MonoBehaviour
         height = (int)hSlider.value;
         depth = (int)dSlider.value;
 
-
     }
 
     public void reGenerate(int choice)
     {
-        var rng = new System.Random();
-        int seed = rng.Next();
-
-        //MazeGenerator3D.startZ = 0;
-        //MazeGenerator3D.startX = 0;
-
         reset();
-        maze = MazeGenerator3D.Generate(width, height, depth, choice, seed);
-        MazeSolver.Solve(maze, width, height, depth);
+        maze = MazeGenerator3D.Generate(width, height, depth, choice);
         Draw(maze);
     }
-    
+
+    public void GenerateRooms(bool[] option, int[] number)
+    {
+        reset();
+        MazeSolver.ResetRooms(maze, width, height, depth);
+
+        if (option[0])
+        {
+            MazeSolver.GenerateRoomsAnywhere(maze, width, height, depth, number[0]);
+        }
+
+        if (option[2])
+        {
+            MazeSolver.GenerateRoomsAtDeadEnds(maze, number[2]);
+        }
+
+        if (option[1])
+        {
+            MazeSolver.GenerateRoomsOnMainPath(maze, width, height, depth, number[1]);
+        }
+
+
+        Draw(maze);
+    }
+
+    public void ResetRoomsOnClick()
+    {
+        MazeSolver.ResetRooms(maze, width, height, depth);
+        Draw(maze);
+    }
+
+    public void GenerateBranches(int l)
+    {
+        MazeGenerator3D.BranchesLength(maze, width, height, depth, l);
+        Draw(maze);
+    }
 
     private void reset()
     {
-        var clones = GameObject.FindGameObjectsWithTag("wall");
-        foreach (var clone in clones)
+        gameObjectsToCombine.Clear();
+        for(int i = 0; i < meshColorObjects.Length; i++)
         {
-            Destroy(clone);
+            foreach(Transform child in meshColorObjects[i].transform)
+            {
+                Destroy(child.GameObject());
+            }
         }
-
     }
 
 
     private void Draw(WallState[,,] maze)
     {
+
         var anchPos = new Vector3(0, 0, 0);
 
         for (int i = 0; i < width; ++i)
@@ -113,73 +142,78 @@ public class MazeRenderer3D : MonoBehaviour
 
                     if(cell.HasFlag(WallState.VISITED))
                     {
+
                         if(j == 0 || j == height - 1)
                         {
-                            pathPrefab.GetComponent<Renderer>().material = startMaterial;
                             anchPos += position;
+                            c = 2;
+                        }
+                        else if (cell.HasFlag(WallState.ROOM))
+                        {
+                            c = 3;
                         }
                         else if(cell.HasFlag(WallState.SOLUTION))
                         {
-                            pathPrefab.GetComponent<Renderer>().material = solutionMaterial;
+                            c = 0;
                         }
                         else
                         {
-                            pathPrefab.GetComponent<Renderer>().material = pathMaterial;
+                            c = 1;
                         }
 
                         var path = Instantiate(pathPrefab, transform) as Transform;
                         path.position = position;
-
-                        /*if(j == 0)
-                        {
-                            anchor.position = position;
-                            //Debug.Log("Position " + position.x + ", " + position.y + ", " + position.z);
-                        }*/
+                        path.SetParent(meshColorObjects[c].transform);
+                        gameObjectsToCombine.Add(path.GameObject());
 
 
                         if (!cell.HasFlag(WallState.LEFT))
                         {
-                            /*path.position += new Vector3(-move, 0, 0);
-                            path.localScale = new Vector3(path.localScale.x + move, path.localScale.y, path.localScale.z);*/
                             var pathLeft = Instantiate(pathPrefab, transform) as Transform;
                             pathLeft.position = position + new Vector3(-move, 0, 0);
+                            pathLeft.SetParent(meshColorObjects[c].transform);
+                            gameObjectsToCombine.Add(pathLeft.GameObject());
                         }
 
                         if (!cell.HasFlag(WallState.RIGHT))
                         {
-                            /*path.position += new Vector3(move, 0, 0);
-                            path.localScale = new Vector3(path.localScale.x + move, path.localScale.y, path.localScale.z);*/
                             var pathRight = Instantiate(pathPrefab, transform) as Transform;
                             pathRight.position = position + new Vector3(move, 0, 0);
+                            pathRight.SetParent(meshColorObjects[c].transform);
+                            gameObjectsToCombine.Add(pathRight.GameObject());
                         }
 
                         if (!cell.HasFlag(WallState.FRONT))
                         {
-                            /*path.position += new Vector3(0, 0, move);
-                            path.localScale = new Vector3(path.localScale.x, path.localScale.y, path.localScale.z + move);*/
                             var pathFront = Instantiate(pathPrefab, transform) as Transform;
                             pathFront.position = position + new Vector3(0, 0, move);
+                            pathFront.SetParent(meshColorObjects[c].transform);
+                            gameObjectsToCombine.Add(pathFront.GameObject());
 
                         }
 
                         if (!cell.HasFlag(WallState.BACK))
                         {
-                            /*path.position += new Vector3(0, 0, -move);
-                            path.localScale = new Vector3(path.localScale.x, path.localScale.y, path.localScale.z + move);*/
                             var pathBack = Instantiate(pathPrefab, transform) as Transform;
                             pathBack.position = position + new Vector3(0, 0, -move);
+                            pathBack.SetParent(meshColorObjects[c].transform);
+                            gameObjectsToCombine.Add(pathBack.GameObject());
                         }
 
                         if(!cell.HasFlag(WallState.ABOVE))
                         {
                             var pathAbove = Instantiate(pathPrefab, transform) as Transform;
                             pathAbove.position = position + new Vector3(0, move, 0);
+                            pathAbove.SetParent(meshColorObjects[c].transform);
+                            gameObjectsToCombine.Add(pathAbove.GameObject());
                         }
 
                         if (!cell.HasFlag(WallState.BELOW))
                         {
                             var pathBelow = Instantiate(pathPrefab, transform) as Transform;
                             pathBelow.position = position + new Vector3(0, -move, 0);
+                            pathBelow.SetParent(meshColorObjects[c].transform);
+                            gameObjectsToCombine.Add(pathBelow.GameObject());
                         }
                     }
 
@@ -187,12 +221,57 @@ public class MazeRenderer3D : MonoBehaviour
             }
         }
 
-        anchor.position = anchPos / 2;
+        anchPos.y = 0.0f;
+        anchor.position = anchPos / (2 * MazeGenerator3D.numberOfPaths);
+
+
+        for(int o = 0; o < meshColorObjects.Length; o++)
+        {
+            if(meshColorObjects[o] != null)
+            {
+                CombineMeshes(meshColorObjects[o]);
+            }
+        }
+
     }
 
-    // Update is called once per frame
-    void Update()
+    public void ShowMainPath(bool show)
     {
+        if(show)
+        {
+            StandardShaderUtils.ChangeRenderMode(pathMaterial, StandardShaderUtils.BlendMode.Fade);
+        }
+        else
+        {
+            StandardShaderUtils.ChangeRenderMode(pathMaterial, StandardShaderUtils.BlendMode.Opaque);
+        }
+    }
+
+    private void CombineMeshes(GameObject obj)
+    {
+      
+       Vector3 position = obj.transform.position;
+       obj.transform.position = Vector3.zero;
+
+       MeshFilter[] meshFilters = obj.GetComponentsInChildren<MeshFilter>();
+       CombineInstance[] combine = new CombineInstance[meshFilters.Length];
+       int i = 1;
+       while (i < meshFilters.Length)
+       {
+            combine[i].mesh = meshFilters[i].sharedMesh;
+            combine[i].transform = meshFilters[i].transform.localToWorldMatrix;
+            meshFilters[i].gameObject.SetActive(false);
+            i++;
+       }
+
+       obj.transform.GetComponent<MeshFilter>().mesh = new Mesh();
+       obj.transform.GetComponent<MeshFilter>().mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+       obj.transform.GetComponent<MeshFilter>().mesh.CombineMeshes(combine, true, true);
+       obj.transform.gameObject.SetActive(true);
+
+       obj.transform.position = position;
         
     }
+
+
 }

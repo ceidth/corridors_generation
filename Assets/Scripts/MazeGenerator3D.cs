@@ -2,6 +2,10 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using System;
+using UnityEngine.UIElements;
+using System.Linq;
+using System.Security.Cryptography;
+using Unity.VisualScripting;
 
 [Flags]
 public enum WallState
@@ -16,7 +20,10 @@ public enum WallState
     FRONTIER = 64,
     VISITED = 128,
 
-    SOLUTION = 256
+    SOLUTION = 256,
+    ROOM = 512,
+
+    OLD_VISIT = 1024
 }
 
 public struct Position
@@ -68,12 +75,21 @@ public class Tree
 
 public static class MazeGenerator3D
 {
+    private static List<Position> branches = new();
+
     public static int startX;
     public static int startZ;
+
+    private static int oldX;
+    private static int oldZ;
 
     public static int finishX = 0;
     public static int finishZ = 0;
 
+    public static int numberOfPaths = 2;
+
+    public static List<Position> start = new();
+    public static List<Position> finish = new();
     public static WallState GetOppositeWall(WallState wall)
     {
         switch (wall)
@@ -88,15 +104,13 @@ public static class MazeGenerator3D
         }
     }
 
-    private static WallState[,,] Prims(WallState[,,] maze, int width, int height, int depth, int seed)
-    {
-        //pozycja startowa na samej gorze kostki
-        var rng = new System.Random(seed);
-        var visited = new List<Position>();
+    /*--------ALGORITHMS--------*/
+    private static WallState[,,] Prims(WallState[,,] maze, int width, int height, int depth)
+    { 
+        var rng = new System.Random(/*seed*/);
         var frontier = new List<Neighbour>();
         var position = new Position { X = startX, Y = height - 1, Z = startZ };
 
-        //zdjemowana gorna sciana z pola, ustawiana flaga visited
         maze[position.X, position.Y, position.Z] |= WallState.VISITED;
 
         maze[position.X, position.Y, position.Z] &= ~WallState.BELOW;
@@ -105,8 +119,6 @@ public static class MazeGenerator3D
         maze[position.X, position.Y - 1, position.Z] |= WallState.VISITED;
 
         position = new Position { X = position.X, Y = position.Y - 1, Z = position.Z };
-        visited.Add(position);
-        //Debug.Log("Start: " + position.X + ", " + position.Y + ", " + position.Z);
 
         frontier.AddRange(GetUnvisitedNeighbours(position, maze, width, height, depth));
 
@@ -116,7 +128,6 @@ public static class MazeGenerator3D
             var randIndex = rng.Next(0, frontier.Count);
             var randFront = frontier[randIndex].Position;
 
-            //Debug.Log("Chosen frontier: " + randFront.X + ", " + randFront.Y + ", " + randFront.Z);
             frontier.RemoveAt(randIndex);
 
             var visitedNeighbours = GetVisitedNeighbours(randFront, maze, width, height, depth);
@@ -124,9 +135,9 @@ public static class MazeGenerator3D
             var randomNeigh = visitedNeighbours[randIndex];
             var nPosition = randomNeigh.Position;
 
+
             if (nPosition.Y > randFront.Y)
             {
-                //Debug.Log("Clearing bc - visited Y: " + nPosition.Y + ", frontier Y: " + randFront.Y);
                 frontier.Clear();
             }
 
@@ -135,26 +146,28 @@ public static class MazeGenerator3D
             maze[nPosition.X, nPosition.Y, nPosition.Z] &= ~GetOppositeWall(randomNeigh.SharedWall);
 
             maze[randFront.X, randFront.Y, randFront.Z] |= WallState.VISITED;
-            visited.Add(randFront);
 
             frontier.AddRange(GetUnvisitedNeighbours(randFront, maze, width, height, depth));
 
             if (randFront.Y == 0)
             {
+                position = randFront;
                 frontier.Clear();
             }
 
         }
 
+        
+        MazeSolver.Solve(maze, width, height, depth, new Position { X = startX, Y = height - 1, Z = startZ }, position);
+
         return maze;
     }
 
-    public static WallState[,,] Kruskals(WallState[,,] maze, int width, int height, int depth, int seed)
+    public static WallState[,,] Kruskals(WallState[,,] maze, int width, int height, int depth)
     {
-        var rng = new System.Random(seed);
+        var rng = new System.Random(/*seed*/);
         var edges = new List<Neighbour>();
 
-        //dodanie ka¿dej komórki do setu/drzewa
         Tree[,,] sets = new Tree[width, height, depth];
         for(int i = 0; i < width; i++)
         {
@@ -168,12 +181,27 @@ public static class MazeGenerator3D
         }
 
         edges.AddRange(GetEdges(width, height, depth));
-        //Debug.Log("Initial: " + edges.Count);
 
-        //losowy poczatek //tu usunac h-1
+        for (int i = 0; i < width; i++)
+        {
+            for (int j = 0; j < height; j++)
+            {
+                for (int k = 0; k < depth; k++)
+                {
+                    if (maze[i, j, k].HasFlag(WallState.OLD_VISIT))
+                    {
+                        if (!sets[i, j, k].isConnected(sets[oldX, height - 1, oldZ]))
+                        {
+                            sets[i, j, k].connect(sets[oldX, height - 1, oldZ]);
+                        }
+
+                        edges.RemoveAll(e => e.Position.Equals(new Position { X = i, Y = j, Z = k }));
+                    }
+                }
+            }
+        }
+
         var start = new Position { X = startX, Y = height - 1, Z = startZ };
-        /*edges.RemoveAll(e => e.Position.X != start.X && e.Position.Z != start.Z && e.Position.Y == height - 1);
-        Debug.Log("Start: " + edges.Count);*/
         sets[start.X, start.Y, start.Z].connect(sets[start.X, start.Y - 1, start.Z]);
         maze[start.X, start.Y, start.Z] &= ~WallState.BELOW;
         maze[start.X, start.Y - 1, start.Z] &= ~WallState.ABOVE;
@@ -182,10 +210,7 @@ public static class MazeGenerator3D
         maze[start.X, start.Y - 1, start.Z] |= WallState.VISITED;
         edges.RemoveAll(e => e.Position.Y == start.Y);
 
-        //losowy koniec //tu usunac 0
         var finish = new Position { X = finishX, Y = 1, Z = finishZ };
-        /*edges.RemoveAll(e => e.Position.X != finish.X && e.Position.Z != finish.Z && e.Position.Y == 1 && e.Wall == WallState.BELOW);
-        Debug.Log("Finish: " + edges.Count);*/
         sets[finish.X, finish.Y, finish.Z].connect(sets[finish.X, finish.Y - 1, finish.Z]);
         maze[finish.X, finish.Y, finish.Z] &= ~WallState.BELOW;
         maze[finish.X, finish.Y - 1, finish.Z] &= ~WallState.ABOVE;
@@ -195,14 +220,12 @@ public static class MazeGenerator3D
         edges.RemoveAll(e => e.Position.Y == finish.Y && e.SharedWall == WallState.BELOW);
         edges.RemoveAll(e => e.Position.Y == 0);
 
-
         while (edges.Count > 0)
         {
             var randIndex = rng.Next(0, edges.Count);
             var randEdge = edges[randIndex];
             edges.RemoveAt(randIndex);
 
-            //znajdz komorke ktora wspoldzieli krawedz
             var neighbour = new Position();
             if(randEdge.SharedWall == WallState.LEFT)
             {
@@ -223,11 +246,6 @@ public static class MazeGenerator3D
                 neighbour.Z = randEdge.Position.Z;
             }
 
-            /*Debug.Log("--------");
-            Debug.Log(randEdge.Position.X + ", " + randEdge.Position.Y + ", " + randEdge.Position.Z + " | " + randEdge.Wall);
-            Debug.Log(neighbour.X + ", " + neighbour.Y + ", " + neighbour.Z);*/
-
-
             if (!sets[randEdge.Position.X, randEdge.Position.Y, randEdge.Position.Z].isConnected(sets[neighbour.X, neighbour.Y, neighbour.Z]))
             {
 
@@ -235,12 +253,8 @@ public static class MazeGenerator3D
                 maze[randEdge.Position.X, randEdge.Position.Y, randEdge.Position.Z] &= ~randEdge.SharedWall;
                 maze[neighbour.X, neighbour.Y, neighbour.Z] &= ~GetOppositeWall(randEdge.SharedWall);
 
-               /* maze[randEdge.Position.X, randEdge.Position.Y, randEdge.Position.Z] |= WallState.VISITED;
-                maze[neighbour.X, neighbour.Y, neighbour.Z] |= WallState.VISITED;*/
-
                 if(randEdge.Position.Y > neighbour.Y)
                 {
-                    Debug.Log("Zejscie w dol, usuwane elementy w rzedzie " + randEdge.Position.Y);
                     edges.RemoveAll(e => e.Position.Y == randEdge.Position.Y && e.SharedWall == WallState.BELOW);
                 }
 
@@ -254,12 +268,14 @@ public static class MazeGenerator3D
 
         MarkAsVisited(maze, sets, start, width, height, depth);
 
+        MazeSolver.Solve(maze, width, height, depth, new Position { X = startX, Y = height - 1, Z = startZ }, new Position { X = finishX, Y = 0, Z = finishZ });
+
         return maze;
     }
 
-    private static WallState[,,] Wilsons(WallState[,,] maze, int width, int height, int depth, int seed)
+    private static WallState[,,] Wilsons(WallState[,,] maze, int width, int height, int depth)
     {
-        var rng = new System.Random(seed);
+        var rng = new System.Random(/*seed*/);
         var position = new Position { X = startX, Y = height - 1, Z = startZ };
 
         maze[position.X, position.Y, position.Z] |= WallState.VISITED;
@@ -268,20 +284,19 @@ public static class MazeGenerator3D
         maze[position.X, position.Y - 1, position.Z] |= WallState.VISITED;
 
         var remaining = width * (height - 1) * depth - 1;
-        //Debug.Log("przed " + (height - 1));
         int nHeight = height - 1;
         while(remaining > 0)
         {
-            remaining = remaining - Walk(maze, width, nHeight, depth, seed);
-            //Debug.Log("po " + height);
+            remaining = remaining - Walk(maze, width, nHeight, depth);
         }
-        
+
+        MazeSolver.Solve(maze, width, height, depth, new Position { X = startX, Y = height - 1, Z = startZ }, new Position { X = finishX, Y = 0, Z = finishZ });
         return maze;
     }
 
-    private static WallState[,,] RecursiveBacktracker(WallState[,,] maze, int width, int height, int depth, int seed)
+    private static WallState[,,] RecursiveBacktracker(WallState[,,] maze, int width, int height, int depth)
     {
-        var rng = new System.Random(seed);
+        var rng = new System.Random(/*seed*/);
         var positionStack = new Stack<Position>();
         var position = new Position { X = startX, Y = height - 1, Z = startZ };
 
@@ -313,11 +328,13 @@ public static class MazeGenerator3D
 
                 if (nPosition.Y == 0)
                 {
+                    position = nPosition;
                     positionStack.Clear();
                 }
             }
         }
 
+        MazeSolver.Solve(maze, width, height, depth, new Position { X = startX, Y = height - 1, Z = startZ }, position);
         return maze;
     }
 
@@ -343,12 +360,12 @@ public static class MazeGenerator3D
                 break;
             }
         }
-
+        MazeSolver.Solve(maze, width, height, depth, new Position { X = startX, Y = height - 1, Z = startZ }, position);
         return maze;
     }
     
     /*--------GENERATE--------*/
-    public static WallState[,,] Generate(int width, int height, int depth, int choice, int seed)
+    public static WallState[,,] Generate(int width, int height, int depth, int choice)
     {
         WallState[,,] maze = new WallState[width, height, depth];
         WallState initial = WallState.ABOVE | WallState.BELOW | WallState.LEFT | WallState.RIGHT | WallState.FRONT | WallState.BACK;
@@ -367,25 +384,220 @@ public static class MazeGenerator3D
         switch (choice)
         {
             case 1:
-                return Prims(maze, width, height, depth, seed);
+                return MultiplePathsPrim(maze, width, height, depth);
 
             case 2:
-                return Kruskals(maze, width, height, depth, seed);
+                return MultiplePathsKruskal(maze, width, height, depth);
 
             case 3:
-                return Wilsons(maze, width, height, depth, seed);
+                return MultiplePathsWilson(maze, width, height, depth);
 
             case 4:
-                return RecursiveBacktracker(maze, width, height, depth, seed);
+                return MultiplePathsBacktracker(maze, width, height, depth);
 
             case 5:
-                return HuntAndKill(maze, width, height, depth);
+                return MultiplePathsHAK(maze, width, height, depth);
 
             default:
                 return maze;
         }
     }
 
+    private static WallState[,,] MultiplePathsPrim(WallState[,,] maze, int width, int height, int depth)
+    {
+        int i = start.Count - 1;
+        var rng = new System.Random();
+
+        startX = start[0].X;
+        startZ = start[0].Z;
+        start.RemoveAt(0);
+
+        Prims(maze, width, height, depth);
+        
+        while(i > 0)
+        {
+            MarkAs(maze, width, height, depth, true);
+            MazeSolver.ResetRooms(maze, width, height, depth);
+
+            startX = start[0].X;
+            startZ = start[0].Z;
+            
+
+            Prims(maze, width, height, depth);
+
+            if(IsConnected(maze, width, height, depth))
+            {
+                start.RemoveAt(0);
+                i--;
+            }
+            
+        }
+        
+        MarkAs(maze, width, height, depth, false);
+        MazeSolver.ReCalculate(maze, width, height, depth);
+
+        return maze;
+    }
+
+    private static WallState[,,] MultiplePathsKruskal(WallState[,,] maze, int width, int height, int depth)
+    {
+        int i = start.Count - 1;
+        var rng = new System.Random();
+
+        startX = start[0].X;
+        startZ = start[0].Z;
+        start.RemoveAt(0);
+
+        oldX = startX;
+        oldZ = startZ;
+
+        finishX = finish[0].X;
+        finishZ = finish[0].Z;
+        finish.RemoveAt(0);
+
+        Kruskals(maze, width, height, depth);
+
+        while (i > 0)
+        {
+            MarkAs(maze, width, height, depth, true);
+            MazeSolver.ResetRooms(maze, width, height, depth);
+
+            startX = start[0].X;
+            startZ = start[0].Z;
+
+            finishX = finish[0].X;
+            finishZ = finish[0].Z;
+            
+            Kruskals(maze, width, height, depth);
+
+            if (IsConnected(maze, width, height, depth))
+            {
+                start.RemoveAt(0);
+                finish.RemoveAt(0);
+                i--;
+            }
+
+        }
+        
+
+        MarkAs(maze, width, height, depth, false);
+        MazeSolver.ReCalculate(maze, width, height, depth);
+
+        return maze;
+    }
+
+    private static WallState[,,] MultiplePathsWilson(WallState[,,] maze, int width, int height, int depth)
+    {
+        int i = start.Count - 1;
+        var rng = new System.Random();
+
+        startX = start[0].X;
+        startZ = start[0].Z;
+        start.RemoveAt(0);
+
+        finishX = finish[0].X;
+        finishZ = finish[0].Z;
+        finish.RemoveAt(0);
+
+        Wilsons(maze, width, height, depth);
+
+        while (i > 0)
+        {
+            MarkAs(maze, width, height, depth, true);
+            MazeSolver.ResetRooms(maze, width, height, depth);
+
+            startX = start[0].X;
+            startZ = start[0].Z;
+
+            finishX = finish[0].X;
+            finishZ = finish[0].Z;
+
+            Wilsons(maze, width, height, depth);
+
+            if (IsConnected(maze, width, height, depth))
+            {
+                start.RemoveAt(0);
+                finish.RemoveAt(0);
+                i--;
+            }
+
+        }
+
+        MarkAs(maze, width, height, depth, false);
+        MazeSolver.ReCalculate(maze, width, height, depth);
+
+        return maze;
+    }
+
+    private static WallState[,,] MultiplePathsBacktracker(WallState[,,] maze, int width, int height, int depth)
+    {
+        int i = start.Count - 1;
+        var rng = new System.Random();
+
+        startX = start[0].X;
+        startZ = start[0].Z;
+        start.RemoveAt(0);
+
+        RecursiveBacktracker(maze, width, height, depth);
+
+        while (i > 0)
+        {
+            MarkAs(maze, width, height, depth, true);
+            MazeSolver.ResetRooms(maze, width, height, depth);
+
+            startX = start[0].X;
+            startZ = start[0].Z;
+            
+            RecursiveBacktracker(maze, width, height, depth);
+
+            if (IsConnected(maze, width, height, depth))
+            {
+                start.RemoveAt(0);
+                i--;
+            }
+
+        }
+
+        MarkAs(maze, width, height, depth, false);
+        MazeSolver.ReCalculate(maze, width, height, depth);
+
+        return maze;
+    }
+
+    private static WallState[,,] MultiplePathsHAK(WallState[,,] maze, int width, int height, int depth)
+    {
+        int i = start.Count - 1;
+        var rng = new System.Random();
+
+        startX = start[0].X;
+        startZ = start[0].Z;
+        start.RemoveAt(0);
+
+        HuntAndKill(maze, width, height, depth);
+
+        while (i > 0)
+        {
+            MarkAs(maze, width, height, depth, true);
+            MazeSolver.ResetRooms(maze, width, height, depth);
+
+            startX = start[0].X;
+            startZ = start[0].Z;
+            
+            HuntAndKill(maze, width, height, depth);
+
+            if (IsConnected(maze, width, height, depth))
+            {
+                start.RemoveAt(0);
+                i--;
+            }
+
+        }
+
+        MarkAs(maze, width, height, depth, false);
+        MazeSolver.ReCalculate(maze, width, height, depth);
+
+        return maze;
+    }
 
     /*--------PRIM'S ALGORITHM (+ RECURSIVE BACKTRACKER)--------*/
     private static List<Neighbour> GetUnvisitedNeighbours(Position p, WallState[,,] maze, int width, int height, int depth)
@@ -449,26 +661,7 @@ public static class MazeGenerator3D
             }
         }
 
-        /*if (p.Y < height - 1) //above
-        {
-            if (!maze[p.X, p.Y + 1, p.Z].HasFlag(WallState.VISITED) && !maze[p.X, p.Y + 1, p.Z].HasFlag(WallState.FRONTIER))
-            {
-                list.Add(new Neighbour
-                {
-                    Position = new Position
-                    {
-                        X = p.X,
-                        Y = p.Y + 1,
-                        Z = p.Z
-                    },
-                    SharedWall = WallState.ABOVE
-                });
-
-                maze[p.X, p.Y + 1, p.Z] |= WallState.FRONTIER;
-            }
-        }*/
-
-        if(p.Z > 0) //back
+        if (p.Z > 0) //back
         {
             if (!maze[p.X, p.Y, p.Z - 1].HasFlag(WallState.VISITED) && !maze[p.X, p.Y, p.Z - 1].HasFlag(WallState.FRONTIER))
             {
@@ -680,7 +873,9 @@ public static class MazeGenerator3D
 
     private static void MarkAsVisited(WallState[,,] maze, Tree[,,] sets, Position start, int width, int height, int depth)  
     {
-        for(int i = 0; i < width; ++i)
+        WallState initial = WallState.ABOVE | WallState.BELOW | WallState.LEFT | WallState.RIGHT | WallState.FRONT | WallState.BACK;
+
+        for (int i = 0; i < width; ++i)
         {
             for(int j = 0; j < height; ++j)
             {
@@ -690,14 +885,20 @@ public static class MazeGenerator3D
                     {
                         maze[i, j, k] |= WallState.VISITED;
                     }
+
+                    else
+                    {
+                        maze[i, j, k] = initial;
+                    }
                 }
             }
         }
     }
 
+
     /*--------WILSON'S ALGORITHM--------*/
 
-    private static int Walk(WallState[,,] maze, int width, int height, int depth, int seed)
+    private static int Walk(WallState[,,] maze, int width, int height, int depth)
     {
         WallState[,,] visits = new WallState[width, height, depth];
         var startCell = new Position();
@@ -738,13 +939,18 @@ public static class MazeGenerator3D
             }
         }
 
-        Debug.Log(randCell.Y);
+        if(randCell.Y == 1)
+        {
+            randCell.X = finishX;
+            randCell.Z = finishZ;
+        }
+
         startCell = randCell;
 
         while (walking)
         {
             walking = false;
-            var neigh = GetValidNeighbour(randCell, visits, width, lowestY[0] + 1, depth, seed);
+            var neigh = GetValidNeighbour(randCell, visits, width, lowestY[0] + 1, depth);
 
             if (!maze[neigh.X, neigh.Y, neigh.Z].HasFlag(WallState.VISITED))
             {
@@ -769,7 +975,7 @@ public static class MazeGenerator3D
         
     }
 
-    private static Position GetValidNeighbour(Position randCell, WallState[,,] visits, int width, int height, int depth, int seed)
+    private static Position GetValidNeighbour(Position randCell, WallState[,,] visits, int width, int height, int depth)
     {
         var dir = new List<WallState> { WallState.LEFT, WallState.RIGHT, WallState.FRONT, WallState.BACK, WallState.ABOVE};
         Shuffle(dir);
@@ -807,15 +1013,6 @@ public static class MazeGenerator3D
                     Z = randCell.Z
                 };
             }
-            /*if (d == WallState.BELOW && randCell.Y > 0)
-            {
-                return new Position
-                {
-                    X = randCell.X,
-                    Y = randCell.Y - 1,
-                    Z = randCell.Z
-                };
-            }*/
             if (d == WallState.FRONT && randCell.Z < depth - 1)
             {
                 return new Position
@@ -936,7 +1133,6 @@ public static class MazeGenerator3D
 
         var rng = new System.Random(/*seed*/);
 
-        //int i = rng.Next(0, width/2)
         for (int i = 0; i < width; i++)
         {
             for (int j = 0; j < height; j++)
@@ -977,15 +1173,18 @@ public static class MazeGenerator3D
 
     }
 
-
-    private static Neighbour VisitRandomNeighbour(Position position, int width, int height, int depth, WallState[,,] maze)
+    private static Neighbour VisitRandomNeighbour(Position position, int width, int height, int depth, WallState[,,] maze, bool plane = false) //& branches
     {
-        var dir = new List<WallState> { WallState.LEFT, WallState.RIGHT, WallState.FRONT, WallState.BACK, WallState.ABOVE };
+        List<WallState> dir;
+        
+        dir = new List<WallState> { WallState.LEFT, WallState.RIGHT, WallState.FRONT, WallState.BACK};
+        
+        
         Shuffle(dir);
 
         foreach (WallState d in dir)
         {
-            if (d == WallState.LEFT && position.X > 0 && !maze[position.X - 1, position.Y, position.Z].HasFlag(WallState.VISITED))
+            if (d == WallState.LEFT && position.X > 0 && !maze[position.X - 1, position.Y, position.Z].HasFlag(WallState.VISITED) && !maze[position.X - 1, position.Y, position.Z].HasFlag(WallState.OLD_VISIT))
             {
                 return new Neighbour
                 {
@@ -998,7 +1197,7 @@ public static class MazeGenerator3D
                     SharedWall = WallState.LEFT
                 };
             }
-            if (d == WallState.RIGHT && position.X < width - 1 && !maze[position.X + 1, position.Y, position.Z].HasFlag(WallState.VISITED))
+            if (d == WallState.RIGHT && position.X < width - 1 && !maze[position.X + 1, position.Y, position.Z].HasFlag(WallState.VISITED) && !maze[position.X + 1, position.Y, position.Z].HasFlag(WallState.OLD_VISIT))
             {
                 return new Neighbour
                 {
@@ -1011,33 +1210,7 @@ public static class MazeGenerator3D
                     SharedWall = WallState.RIGHT
                 };
             }
-            /*if (d == WallState.ABOVE && position.Y < height - 1 && !maze[position.X, position.Y + 1, position.Z].HasFlag(WallState.VISITED))
-            {
-                return new Neighbour
-                {
-                    Position = new Position
-                    {
-                        X = position.X,
-                        Y = position.Y + 1,
-                        Z = position.Z
-                    },
-                    SharedWall = WallState.ABOVE
-                };
-            }*/
-            if (d == WallState.BELOW && position.Y > 0 && !maze[position.X, position.Y - 1, position.Z].HasFlag(WallState.VISITED))
-            {
-                return new Neighbour
-                {
-                    Position = new Position
-                    {
-                        X = position.X,
-                        Y = position.Y - 1,
-                        Z = position.Z
-                    },
-                    SharedWall = WallState.BELOW
-                };
-            }
-            if (d == WallState.FRONT && position.Z < depth - 1 && !maze[position.X, position.Y, position.Z + 1].HasFlag(WallState.VISITED))
+            if (d == WallState.FRONT && position.Z < depth - 1 && !maze[position.X, position.Y, position.Z + 1].HasFlag(WallState.VISITED) && !maze[position.X, position.Y, position.Z + 1].HasFlag(WallState.OLD_VISIT))
             {
                 return new Neighbour
                 {
@@ -1050,7 +1223,7 @@ public static class MazeGenerator3D
                     SharedWall = WallState.FRONT
                 };
             }
-            if (d == WallState.BACK && position.Z > 0 && !maze[position.X, position.Y, position.Z - 1].HasFlag(WallState.VISITED))
+            if (d == WallState.BACK && position.Z > 0 && !maze[position.X, position.Y, position.Z - 1].HasFlag(WallState.VISITED) && !maze[position.X, position.Y, position.Z - 1].HasFlag(WallState.OLD_VISIT))
             {
                 return new Neighbour
                 {
@@ -1071,6 +1244,266 @@ public static class MazeGenerator3D
             SharedWall = WallState.VISITED
         };
     }
+
+    /*--------PARAMETERS--------*/
+    //branches
+    public static WallState[,,] BranchesLength(WallState[,,] maze, int width, int height, int depth, int length)
+    {
+        MazeSolver.ReCalculate(maze, width, height, depth);
+        var startEnds = new List<Position>(MazeSolver.ends);
+
+        HashSet<Position> toDelete = new HashSet<Position>();
+
+        while (startEnds.Count > 0)
+        {
+            int i = length;
+
+            var pos = startEnds[0];
+            startEnds.RemoveAt(0);
+
+            Neighbour newPos = VisitRandomNeighbour(pos, width, height, depth, maze, true);
+            branches.Clear();
+
+            bool[,,] wasHere = new bool[width, height, depth];
+            bool r = RecursiveBranches(pos, maze, wasHere, width, height, depth);
+
+            int placed = branches.Count;
+
+            if (placed < length) // krotsze niz podana dlugosc
+            {
+                if (newPos.SharedWall != WallState.VISITED)
+                {
+                    maze[pos.X, pos.Y, pos.Z] &= ~newPos.SharedWall;
+                    maze[newPos.Position.X, newPos.Position.Y, newPos.Position.Z] &= ~GetOppositeWall(newPos.SharedWall);
+                    pos = newPos.Position;
+                    maze[pos.X, pos.Y, pos.Z] |= WallState.VISITED;
+                    i--;
+                }
+
+                i -= placed;
+
+                while (newPos.SharedWall != WallState.VISITED && i > 0)
+                {
+                    newPos = VisitRandomNeighbour(pos, width, height, depth, maze);
+
+                    if (newPos.SharedWall != WallState.VISITED)
+                    {
+                        maze[pos.X, pos.Y, pos.Z] &= ~newPos.SharedWall;
+                        maze[newPos.Position.X, newPos.Position.Y, newPos.Position.Z] &= ~GetOppositeWall(newPos.SharedWall);
+                        pos = newPos.Position;
+                        maze[pos.X, pos.Y, pos.Z] |= WallState.VISITED;
+                    }
+
+                    i--;
+
+                }
+            }
+
+            if (placed > length)
+            {
+
+                while (placed > length)
+                {
+
+                    var branch = branches.Last();
+                    toDelete.Add(branch);
+                    branches.RemoveAt(branches.Count - 1);
+                    placed--;
+
+                }
+
+            }
+
+        }
+
+        foreach (var d in toDelete)
+        {
+            maze[d.X, d.Y, d.Z] &= ~WallState.VISITED;
+
+            if(!maze[d.X, d.Y, d.Z].HasFlag(WallState.LEFT))
+            {
+                maze[d.X, d.Y, d.Z] |= WallState.LEFT;
+                maze[d.X - 1, d.Y, d.Z] |= WallState.RIGHT;
+            }
+
+            if (!maze[d.X, d.Y, d.Z].HasFlag(WallState.RIGHT))
+            {
+                maze[d.X, d.Y, d.Z] |= WallState.RIGHT;
+                maze[d.X + 1, d.Y, d.Z] |= WallState.LEFT;
+            }
+
+            if (!maze[d.X, d.Y, d.Z].HasFlag(WallState.FRONT))
+            {
+                maze[d.X, d.Y, d.Z] |= WallState.FRONT;
+                maze[d.X, d.Y, d.Z + 1] |= WallState.BACK;
+            }
+            if (!maze[d.X, d.Y, d.Z].HasFlag(WallState.BACK))
+            {
+                maze[d.X, d.Y, d.Z] |= WallState.BACK;
+                maze[d.X, d.Y, d.Z - 1] |= WallState.FRONT;
+            }
+
+        }
+
+        MazeSolver.ResetRooms(maze, width, height, depth);
+        MazeSolver.ReCalculate(maze, width, height, depth);
+
+        return maze;
+    }
+
+    private static bool RecursiveBranches(Position position, WallState[,,] maze, bool[,,] wasHere, int width, int height, int depth)
+    {
+        if (maze[position.X, position.Y, position.Z].HasFlag(WallState.SOLUTION))
+        {
+            return true;
+        }
+
+        if (wasHere[position.X, position.Y, position.Z] || !maze[position.X, position.Y, position.Z].HasFlag(WallState.VISITED))
+        {
+            return false;
+        }
+
+        wasHere[position.X, position.Y, position.Z] = true;
+
+        //left
+        if (position.X > 0 && !maze[position.X, position.Y, position.Z].HasFlag(WallState.LEFT))
+        {
+            if (RecursiveBranches(new Position { X = position.X - 1, Y = position.Y, Z = position.Z }, maze, wasHere, width, height, depth))
+            {
+                branches.Add(position);
+                return true;
+            }
+        }
+
+        //right
+        if (position.X < width - 1 && !maze[position.X, position.Y, position.Z].HasFlag(WallState.RIGHT))
+        {
+            if (RecursiveBranches(new Position { X = position.X + 1, Y = position.Y, Z = position.Z }, maze, wasHere, width, height, depth))
+            {
+                branches.Add(position);
+                return true;
+            }
+        }
+
+        if (position.Z > 0 && !maze[position.X, position.Y, position.Z].HasFlag(WallState.BACK))
+        {
+            if (RecursiveBranches(new Position { X = position.X, Y = position.Y, Z = position.Z - 1 }, maze, wasHere, width, height, depth))
+            {
+                branches.Add(position);
+                return true;
+            }
+        }
+
+        if (position.Z < depth - 1 && !maze[position.X, position.Y, position.Z].HasFlag(WallState.FRONT))
+        {
+            if (RecursiveBranches(new Position { X = position.X, Y = position.Y, Z = position.Z + 1 }, maze, wasHere, width, height, depth))
+            {
+                branches.Add(position);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    //paths
+    private static void MarkAs(WallState[,,] maze, int width, int height, int depth, bool old)
+    {
+        for (int i = 0; i < width; i++)
+        {
+            for (int j = 0; j < height; j++)
+            {
+                for (int k = 0; k < depth; k++)
+                {
+                    if (maze[i, j, k].HasFlag(WallState.VISITED) && old)
+                    {
+                        maze[i, j, k] &= ~WallState.VISITED;
+                        maze[i, j, k] |= WallState.OLD_VISIT;
+                    }
+
+                    if (maze[i, j, k].HasFlag(WallState.OLD_VISIT) && !old)
+                    {
+                        maze[i, j, k] &= ~WallState.OLD_VISIT;
+                        maze[i, j, k] |= WallState.VISITED;
+                    }
+                }
+            }
+        }
+    }
+
+    private static bool IsConnected(WallState[,,] maze, int width, int height, int depth)
+    {
+        for (int i = 0; i < width; i++)
+        {
+            for (int j = 0; j < height; j++)
+            {
+                for (int k = 0; k < depth; k++)
+                {
+                    if (maze[i, j, k].HasFlag(WallState.VISITED) && maze[i, j, k].HasFlag(WallState.OLD_VISIT))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        //else reset
+        for (int i = 0; i < width; i++)
+        {
+            for (int j = 0; j < height; j++)
+            {
+                for (int k = 0; k < depth; k++)
+                {
+                    if (maze[i, j, k].HasFlag(WallState.VISITED))
+                    {
+
+                        maze[i, j, k] &= ~WallState.VISITED;
+
+                        if (maze[i, j, k].HasFlag(WallState.SOLUTION))
+                        {
+                            maze[i, j, k] &= ~WallState.SOLUTION;
+                        }
+
+                        if (!maze[i, j, k].HasFlag(WallState.LEFT))
+                        {
+                            maze[i, j, k] |= WallState.LEFT;
+                        }
+
+                        if (!maze[i, j, k].HasFlag(WallState.RIGHT))
+                        {
+                            maze[i, j, k] |= WallState.RIGHT;
+                        }
+
+                        if (!maze[i, j, k].HasFlag(WallState.FRONT))
+                        {
+                            maze[i, j, k] |= WallState.FRONT;
+                        }
+
+                        if (!maze[i, j, k].HasFlag(WallState.BACK))
+                        {
+                            maze[i, j, k] |= WallState.BACK;
+                        }
+
+                        if (!maze[i, j, k].HasFlag(WallState.ABOVE))
+                        {
+                            maze[i, j, k] |= WallState.ABOVE;
+                        }
+
+                        if (!maze[i, j, k].HasFlag(WallState.BELOW))
+                        {
+                            maze[i, j, k] |= WallState.BELOW;
+                        }
+                    }
+
+
+
+                }
+            }
+        }
+
+        return false;
+    }
+
 
     /*--------OTHER--------*/
     public static void Shuffle<T>(this IList<T> list)
