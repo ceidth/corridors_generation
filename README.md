@@ -1,5 +1,5 @@
 ## General info
-This program is a practical part of my thesis titled ** Procedural creation of corridor networks in video games **
+This program is a practical part of my thesis titled **Procedural creation of corridor networks in video games**
 
 My thesis aims to study and describe existing methods used in procedural generation (especially for creating corridor networks) and propose a new approach to the problem. The outcome of the work is a computer
 program made in Unity that enables users generate a 3D corridor network based on one of the following maze generation algorithms: Prim's algorithm, Kruskal's algorithm, Wilson's algorithm, recursive backtracker,
